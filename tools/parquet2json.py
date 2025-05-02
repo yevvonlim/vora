@@ -44,7 +44,18 @@ def process_parquet_file(parquet_path):
     results = [r for r in results if r is not None]
     # Write the results to the JSON file
     for row in results:
-        f.write(json.dumps(row.to_dict()) + '\n')
+        np_dict = row.to_dict()
+        for k in np_dict:
+            try:
+                np_dict[k] = np_dict[k].tolist()
+            except:
+                pass
+        try:
+            f.write(json.dumps(np_dict) + '\n')
+        except Exception as e:
+            print(np_dict)
+            print(e)
+            raise e
 
     print(f"{parquet_path} saved!")
 
