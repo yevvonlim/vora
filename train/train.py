@@ -78,7 +78,8 @@ class VoRATrainer(Trainer):
         if self.args.include_num_input_tokens_seen:
             logs["num_input_tokens_seen"] = self.state.num_input_tokens_seen
             if start_time is not None:
-                speed_metrics("train", start_time, num_tokens=self.state.num_input_tokens_seen)
+                pass
+                # speed_metrics("train", start_time, num_tokens=self.state.num_input_tokens_seen)
 
         additional_logs = self.additional_state.pop_metrics(gather_func=self._nested_gather) if hasattr(self, 'additional_state') else dict()
 
