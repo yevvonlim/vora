@@ -30,6 +30,8 @@ dependencies = [
     "nvitop>=1.5.0",
     "ipython>=8.36.0",
     "transformers>=4.51.3",
+    "timm>=1.0.15",
+    "xformers>=0.0.29.post1",
 ]
 
 [project.urls]

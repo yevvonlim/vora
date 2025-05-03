@@ -3,7 +3,7 @@ import torch.nn as nn
 from transformers import CLIPVisionModel, AutoModel
 
 from .configuration_vora import VoRAConfig
-
+from .eva_model import EVAVisionTransformer
 
 class RMSNorm(nn.Module):
     def __init__(self, dim: int, eps: float = 1e-5):
@@ -60,10 +60,33 @@ class AuxVision(nn.Module):
         super().__init__()
         self.skip_aux_cls = config.skip_aux_cls  # whether to skip the cls token in ViT
         # ---------------- Setup Aux Model ----------------
+        # support jina clip encoder
+        if 'jina' in config.aux_vision.lower() and 'clip' in config.aux_vision.lower():
+            cfg = {
+                "img_size": 512,
+                "num_classes": 1024,
+                "embed_dim": 1024,
+                "patch_size": 14,
+                "depth": 24,
+                "qkv_bias": True,
+                "naiveswiglu": True,
+                "num_heads": 16,
+                "patch_dropout":0.1,
+                "subln": True,
+                "mlp_ratio": 2.66666,
+                "use_mean_pooling": False,
+            } 
+            self.aux_model = EVAVisionTransformer(**cfg)
+            self.aux_model.load_state_dict(torch.load(config.aux_vision, map_location='cpu'), strict=False)
+            vision_hidden_size = 1024
+            num_hidden_layers = 24
+
+
         if 'clip' in config.aux_vision.lower():
             self.aux_model = CLIPVisionModel.from_pretrained(config.aux_vision)
             vision_hidden_size = self.aux_model.vision_model.config.hidden_size
             num_hidden_layers = self.aux_model.vision_model.config.num_hidden_layers
+        
         else:
             self.aux_model = AutoModel.from_pretrained(config.aux_vision, trust_remote_code=True)
             vision_hidden_size = self.aux_model.config.hidden_size

@@ -11,7 +11,7 @@ from transformers import AutoImageProcessor
 
 class HFImageTransform:
     def __init__(self, path):
-        self.image_processor = AutoImageProcessor.from_pretrained(path)
+        self.image_processor = AutoImageProcessor.from_pretrained(path, trust_remote_code=True)
 
     def __call__(self, image: Image.Image):
         image = self.image_processor(image, return_tensors='pt')['pixel_values'][0]
