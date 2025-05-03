@@ -82,7 +82,7 @@ class AuxVision(nn.Module):
             num_hidden_layers = 24
 
 
-        if 'clip' in config.aux_vision.lower():
+        elif 'clip' in config.aux_vision.lower():
             self.aux_model = CLIPVisionModel.from_pretrained(config.aux_vision)
             vision_hidden_size = self.aux_model.vision_model.config.hidden_size
             num_hidden_layers = self.aux_model.vision_model.config.num_hidden_layers
