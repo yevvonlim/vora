@@ -77,7 +77,7 @@ class AuxVision(nn.Module):
                 "use_mean_pooling": False,
             } 
             self.aux_model = EVAVisionTransformer(**cfg)
-            self.aux_model.load_state_dict(torch.load(config.aux_vision, map_location='cpu'), strict=False)
+            self.aux_model.load_state_dict(torch.load(config.aux_vision, map_location='cpu', weights_only=True), strict=False)
             vision_hidden_size = 1024
             num_hidden_layers = 24
 

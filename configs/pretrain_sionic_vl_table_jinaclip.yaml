@@ -28,7 +28,6 @@ model:
   patch_size: 14
   image_size: 448
   aux_vision: "/workspace/VoRAParse/output/jina-clip2-image/image-encoder.pt"
-  reuse_aux_vision_embedding_layers: "preprocessor"
   lora:
     layers: 24
     r: 1024
