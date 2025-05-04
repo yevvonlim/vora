@@ -26,8 +26,9 @@ model:
   llm: Qwen/Qwen3-8B
   vision_embedding: "AIMv2Embedding"
   patch_size: 14
-  image_size: 448
+  image_size: 512
   aux_vision: "/workspace/VoRAParse/output/jina-clip2-image/image-encoder.pt"
+  reuse_aux_vision_embedding_layers: "patch_embed"
   lora:
     layers: 24
     r: 1024

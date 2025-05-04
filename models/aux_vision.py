@@ -71,7 +71,7 @@ class AuxVision(nn.Module):
                 "qkv_bias": True,
                 "naiveswiglu": True,
                 "num_heads": 16,
-                "patch_dropout":0.1,
+                "patch_dropout":0, # disable patch dropout
                 "subln": True,
                 "mlp_ratio": 2.66666,
                 "use_mean_pooling": False,

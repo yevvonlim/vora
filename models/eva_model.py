@@ -11,6 +11,7 @@ from easydict import EasyDict as edict
 import torch
 import torch.nn as nn
 import torch.nn.functional as f
+import loguru
 
 try:
     warnings.filterwarnings('ignore', category=FutureWarning, module='timm')
@@ -751,6 +752,7 @@ class EVAVisionTransformer(nn.Module):
                 x = checkpoint(blk, x, (rel_pos_bias,))
             else:
                 x = blk(x, rel_pos_bias=rel_pos_bias)
+            
             hidden_states.append(x)
         
         return edict(
@@ -761,5 +763,6 @@ class EVAVisionTransformer(nn.Module):
             }
         )
 
-    def forward(self, x, return_all_features=False):
+    def forward(self, x, return_all_features=False, **kwargs):
+        
         return self.forward_features(x, return_all_features=return_all_features)
