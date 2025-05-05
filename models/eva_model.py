@@ -753,7 +753,7 @@ class EVAVisionTransformer(nn.Module):
             else:
                 x = blk(x, rel_pos_bias=rel_pos_bias)
             
-            hidden_states.append(x)
+            hidden_states.append(x[:, 1:])
         
         return edict(
             {

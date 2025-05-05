@@ -63,10 +63,8 @@ class VoRAForCausalLM(PreTrainedModel):
             self.aux_vision = AuxVision(self.config)
             if config.reuse_aux_vision_embedding_layers:
                 weights = getattr(self.aux_vision.aux_model, config.reuse_aux_vision_embedding_layers).state_dict()
-                try:
-                    msg = self.vision_embedding.load_state_dict(weights, strict=False)
-                except Exception as e:
-                    msg = self.vision_embedding.patchifier.load_state_dict(weights, strict=False)
+                msg = self.vision_embedding.load_state_dict(weights, strict=False)
+                msg = self.vision_embedding.patchifier.load_state_dict(weights, strict=False)
                 logger.info(f"Loaded aux vision weights: {msg}")
         # ----------------------------------------------
         # print trainable prameters and total parameters so that we can check if we are loading the correct model
@@ -227,7 +225,6 @@ class VoRAForCausalLM(PreTrainedModel):
         vision_placeholder_index = batch.pop("vision_placeholder_index")
         images, n_frames = batch["frames"], batch["n_frames"]
         vision_encode_out = self._encode_vision(images, n_frames)
-        loguru.logger.debug(f"vision_encode_out: {vision_encode_out.shape}")
         inputs_embeds, attention_mask, targets, vision_mask = self._concat_embedding(
             vision_encode_out, batch, vision_placeholder_index)
         # -----------------------------------------------

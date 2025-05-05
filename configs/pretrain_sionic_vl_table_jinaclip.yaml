@@ -28,7 +28,6 @@ model:
   patch_size: 14
   image_size: 512
   aux_vision: "/workspace/VoRAParse/output/jina-clip2-image/image-encoder.pt"
-  reuse_aux_vision_embedding_layers: "patch_embed"
   lora:
     layers: 24
     r: 1024
@@ -65,6 +64,6 @@ data:
         roles: ["\n<|im_start|>user\n", "<|im_end|>\n<|im_start|>assistant\n"]
       num_segments: 1
       frames_ops:
-        # PILExpand2Square: {}
+        PILExpand2Square: {}
         HFImageTransform:
           path: /workspace/VoRAParse/output/jina-clip2-image
