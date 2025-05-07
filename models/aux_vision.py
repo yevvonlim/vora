@@ -4,7 +4,7 @@ from transformers import CLIPVisionModel, AutoModel
 
 from .configuration_vora import VoRAConfig
 from .eva_model import EVAVisionTransformer
-
+import loguru
 class RMSNorm(nn.Module):
     def __init__(self, dim: int, eps: float = 1e-5):
         super().__init__()
@@ -120,6 +120,11 @@ class AuxVision(nn.Module):
         for layer_idx in self.aux_layers:
             aux_hidden_states = getattr(self, f"aux_layer_{layer_idx}")(llm_hidden_states[layer_idx][vision_mask == 1])
             start_id = 1 if self.skip_aux_cls else 0
-            aux_loss = self.loss_function(vision_hidden_states[layer_idx][:, start_id:].reshape(aux_hidden_states.shape), aux_hidden_states)
+            try:
+                aux_loss = self.loss_function(vision_hidden_states[layer_idx][:, start_id:].reshape(aux_hidden_states.shape), aux_hidden_states)
+            except Exception as e:
+                loguru.logger.error(f"Aux Vision loss function error: {e} occured at layer {layer_idx}")
+                loguru.logger.error(f"Aux Vision aux_hidden_states: {aux_hidden_states.shape}, vision_hidden_states: {vision_hidden_states[layer_idx][:, start_id:].reshape(aux_hidden_states.shape).shape}")
+                raise e
             losses[f"loss_aux_layer_{layer_idx}"] = aux_loss
         return losses

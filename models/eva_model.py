@@ -746,7 +746,7 @@ class EVAVisionTransformer(nn.Module):
             x = self.patch_dropout(x)
 
         rel_pos_bias = self.rel_pos_bias() if self.rel_pos_bias is not None else None
-        hidden_states = [x]
+        hidden_states = [x[:, 1:]]
         for blk in self.blocks:
             if self.grad_checkpointing:
                 x = checkpoint(blk, x, (rel_pos_bias,))
