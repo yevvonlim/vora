@@ -3,7 +3,7 @@ from pathlib import Path
 import json
 
 # Root directory where JSONL and frames will be saved
-ROOT = Path("/home/VoRA/dataset_json/TableImageTextPair")
+ROOT = Path("/home/ye/data/TableImageTextPair")
 FRAMES_DIR = ROOT / "frames"
 FRAMES_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -78,7 +78,7 @@ def format_batch(batch) -> dict:
 
 def preprocess():
     # 1) Load the dataset
-    ds = load_dataset("sionic-ai/TableImageTextpairData-replica", split="train")
+    ds = load_dataset("sionic-ai/TableImageTextpairData-replica", split="train", num_proc=128)
 
     # 2) Map in batched mode
     ds2 = ds.map(

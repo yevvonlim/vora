@@ -14,8 +14,8 @@ classifiers = [
 ]
 
 dependencies = [
-    "torch==2.5.1",
-    "torchvision==0.20.1",
+    "torch==2.7.0",
+    "torchvision==0.22.0",
     "deepspeed==0.16.3",
     "tokenizers==0.21.1",
     "sentencepiece==0.2.0",
@@ -33,7 +33,7 @@ dependencies = [
     "timm>=1.0.15",
     "xformers>=0.0.29.post1",
     "loguru>=0.7.3",
-    "mpi4py>=4.0.3",
+    "torch-xla>=2.7.0",
 ]
 
 [project.urls]
