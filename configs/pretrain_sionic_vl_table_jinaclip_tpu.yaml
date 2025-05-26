@@ -1,0 +1,89 @@
+bf16: False
+seed: 42
+num_train_epochs: 3
+per_device_train_batch_size: 8  # 8 GPUs
+per_device_eval_batch_size: 4
+gradient_accumulation_steps: 4  
+# evaluation_strategy: "no"
+save_strategy: "steps"
+save_steps: 5000
+learning_rate: 0.0002
+weight_decay: 0.
+warmup_steps: 100
+lr_scheduler_type: "constant_with_warmup"
+logging_steps: 1
+tf32: False
+shuffle: True 
+gradient_checkpointing: true
+dataloader_num_workers: 4
+report_to: wandb
+output_dir: /mnt/data/output/pretrain_sionic_vl_table_jina
+wandb_project: VoRA
+run_name: pretrain_sionic_vl_table_jina
+
+compute_environment: LOCAL_MACHINE
+distributed_type: TORCH_DISTRIBUTED
+
+debug: false
+distributed_type: XLA
+downcast_bf16: 'no'
+enable_cpu_affinity: false
+machine_rank: 0
+main_training_function: main
+mixed_precision: 'no'
+num_machines: 1
+num_processes: 8
+rdzv_backend: static
+same_network: true
+tpu_env: []
+tpu_use_cluster: false
+tpu_use_sudo: false
+use_cpu: false
+
+#deepspeed: ./configs/deepspeed/zero2.json
+
+model:
+  llm: Qwen/Qwen3-8B
+  vision_embedding: "AIMv2Embedding"
+  patch_size: 14
+  image_size: 512
+  aux_vision: "/home/ye/VoRAParse/output/jina-clip-encoder/image-encoder.pt"
+  lora:
+    layers: 24
+    r: 1024
+    target_modules: [    
+        "self_attn.q_proj",
+        "self_attn.k_proj",
+        "self_attn.v_proj",
+        "self_attn.o_proj",
+        "mlp.up_proj",
+        "mlp.gate_proj",
+        "mlp.down_proj",
+    ]
+
+data:
+  train:
+    data_fetch:
+      data_paths: [
+        {
+          "anno_path": "/mnt/data/TableImageTextPair/annotations/data_utf8.jsonl", # modify here
+          "image_folder": "/mnt/data/TableImageTextPair" # modify here
+        }
+      ]
+
+    data_preprocess:
+      frames_key: frames
+      label_key: conversations
+      tokenizer: Qwen/Qwen3-8B
+      max_seq_len: 2048
+      max_prompt_len: 2048
+      vqa_processor_params:
+        system_start: "<|im_start|>system\n"
+        system_end: "<|im_end|>"
+        system_message: "You are a helpful assistant."
+        roles: ["\n<|im_start|>user\n", "<|im_end|>\n<|im_start|>assistant\n"]
+      num_segments: 1
+      frames_ops:
+        PILExpand2Square: {}
+        HFImageTransform:
+          path: /home/ye/VoRAParse/output/jina-clip-encoder

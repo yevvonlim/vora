@@ -3,7 +3,7 @@ from pathlib import Path
 import json
 
 # Root directory where JSONL and frames will be saved
-ROOT = Path("/home/ye/data/TableImageTextPair")
+ROOT = Path("/mnt/data/TableImageTextPair")
 FRAMES_DIR = ROOT / "frames"
 FRAMES_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -91,7 +91,7 @@ def preprocess():
 
     # 3) Save to JSONL
     out_file = ROOT / "annotations/data.json"
-    ds2.to_json(str(out_file), orient="records", lines=True)
+    ds2.to_json(str(out_file), orient="records", lines=True, force_ascii=False)
     print(f"Wrote {len(ds2)} records to {out_file}")
 
 if __name__ == "__main__":

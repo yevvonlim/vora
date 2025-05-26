@@ -117,7 +117,7 @@ deepspeed --master_port=20000 train/train.py configs/pretrain_I30M_T6M.yaml
 
 Train VoRA on multi nodes:
 ```bash
-torchrun --nproc_per_node 8 --nnodes 4 --node_rank $NODE_RANK --master_addr $MASTER_ADDR --master_port $MASTER_PORT train/train.py configs/pretrain_I30M_T6M.yaml
+PJRT_DEVICE=TPU torchrun --nproc_per_node 8 --nnodes 4 --node_rank $NODE_RANK --master_addr $MASTER_ADDR --master_port $MASTER_PORT train/train.py configs/pretrain_I30M_T6M.yaml
 ```
 
 2. Finetuning
