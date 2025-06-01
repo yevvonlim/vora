@@ -1,0 +1,21 @@
+# Additional requirements for GCS support
+# Install these in addition to the packages in pyproject.toml
+
+# Google Cloud Storage client library
+google-cloud-storage>=2.10.0
+
+# Google Cloud Core (usually included with google-cloud-storage)
+google-cloud-core>=2.3.0
+
+# For authentication (if not using service account)
+google-auth>=2.15.0
+
+# Optional: Google Cloud SDK CLI tools for better performance
+# Install separately: https://cloud.google.com/sdk/docs/install
+# Or via package manager:
+# - Ubuntu/Debian: apt-get install google-cloud-cli
+# - macOS: brew install google-cloud-sdk
+# - Windows: Download installer from Google
+
+# The gsutil command-line tool is included with Google Cloud SDK
+# and provides better performance for large file transfers

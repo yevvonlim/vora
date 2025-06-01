@@ -1,0 +1,91 @@
+# TPU-32 Training Configuration with GCS Support
+bf16: False
+seed: 42
+num_train_epochs: 3
+per_device_train_batch_size: 4
+per_device_eval_batch_size: 2
+gradient_accumulation_steps: 8
+save_strategy: "steps"
+save_steps: 2000
+learning_rate: 0.0002
+weight_decay: 0.
+warmup_steps: 200
+lr_scheduler_type: "constant_with_warmup"
+logging_steps: 1
+tf32: False
+shuffle: True
+gradient_checkpointing: true
+dataloader_num_workers: 2
+report_to: wandb
+
+# GCS Bucket paths - modify these for your setup
+output_dir: gs://vora-pretraining/output/vora-tpu32-run
+wandb_project: VoRA-TPU32-GCS
+run_name: vora_tpu32_gcs_training
+
+# TPU-specific configurations
+tpu_cores: 32
+gradient_clipping: 1.0
+mixed_precision: bf16
+
+# Training optimizations
+max_steps: 50000
+eval_steps: 2000
+eval_strategy: "steps"
+load_best_model_at_end: false
+metric_for_best_model: "loss"
+greater_is_better: false
+save_total_limit: 3
+ignore_data_skip: true
+group_by_length: false
+
+model:
+  llm: Qwen/Qwen3-8B
+  vision_embedding: "AIMv2Embedding"
+  patch_size: 14
+  image_size: 512
+  # GCS path for aux vision model
+  aux_vision: "gs://vora-pretraining/jina-clip/image-encoder.pt"
+  # Optional: pretrained model from GCS
+  # pretrained: "gs://your-model-bucket/pretrained/vora-checkpoint"
+  lora:
+    layers: 24
+    r: 1024
+    target_modules: [    
+        "self_attn.q_proj",
+        "self_attn.k_proj",
+        "self_attn.v_proj",
+        "self_attn.o_proj",
+        "mlp.up_proj",
+        "mlp.gate_proj",
+        "mlp.down_proj",
+    ]
+
+data:
+  train:
+    data_fetch:
+      data_paths: [
+        {
+          # GCS paths for dataset
+          "anno_path": "gs://vora-pretraining/dataset/table-ai-hub/annotations/data.jsonl",
+          "image_folder": "gs://vora-pretraining/dataset/table-ai-hub/frames"
+        }
+      ]
+
+    data_preprocess:
+      frames_key: frames
+      label_key: conversations
+      tokenizer: Qwen/Qwen3-8B
+      max_seq_len: 2048
+      max_prompt_len: 2048
+      vqa_processor_params:
+        system_start: "<|im_start|>system\n"
+        system_end: "<|im_end|>"
+        system_message: "You are a helpful assistant."
+        roles: ["\n<|im_start|>user\n", "<|im_end|>\n<|im_start|>assistant\n"]
+      num_segments: 1
+      frames_ops:
+        PILExpand2Square: {}
+        HFImageTransform:
+          # GCS path for HuggingFace image transform model
+          path: gs://vora-pretraining/jina-clip/hf-image-transform

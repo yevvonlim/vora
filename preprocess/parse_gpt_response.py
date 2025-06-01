@@ -3,7 +3,7 @@ from pathlib import Path
 import json
 
 # Root directory where JSONL and frames will be saved
-ROOT = Path("/mnt/data/TableImageTextPair")
+ROOT = Path("/home/ye/VoRAParse/dataset/TableImageTextPair")
 FRAMES_DIR = ROOT / "frames"
 FRAMES_DIR.mkdir(parents=True, exist_ok=True)
 

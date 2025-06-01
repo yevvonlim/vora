@@ -1,0 +1,91 @@
+bf16: False
+seed: 42
+num_train_epochs: 3
+per_device_train_batch_size: 4  # 32 TPU cores * 4 = 128 total batch size
+per_device_eval_batch_size: 2
+gradient_accumulation_steps: 8  # Effective batch size = 128 * 8 = 1024
+save_strategy: "steps"
+save_steps: 2000
+learning_rate: 0.0002
+weight_decay: 0.
+warmup_steps: 200
+lr_scheduler_type: "constant_with_warmup"
+logging_steps: 1
+tf32: False
+shuffle: True
+gradient_checkpointing: true
+dataloader_num_workers: 2  # Reduced for TPU
+report_to: wandb
+output_dir: /mnt/data/output/pretrain_tpu_32_cores
+wandb_project: VoRA-TPU32
+run_name: pretrain_tpu_32_cores
+
+# TPU-specific configurations
+tpu_cores: 32
+tpu_metrics_debug: true
+gradient_clipping: 1.0
+async_checkpoint: true
+
+# Training optimizations for 32 TPU cores
+max_steps: 50000
+eval_steps: 2000
+eval_strategy: "steps"
+load_best_model_at_end: false
+metric_for_best_model: "loss"
+greater_is_better: false
+
+# Memory and performance optimizations
+fp16: false  # Use bf16 through XLA flags instead
+dataloader_pin_memory: false
+remove_unused_columns: false
+ignore_data_skip: true
+
+# TPU-specific data settings
+group_by_length: false  # Can cause issues on TPU
+length_column_name: null
+
+model:
+  llm: Qwen/Qwen3-8B
+  vision_embedding: "AIMv2Embedding"
+  patch_size: 14
+  image_size: 512
+  aux_vision: "/home/ye/VoRAParse/output/jina-clip-encoder/image-encoder.pt"
+  lora:
+    layers: 24
+    r: 1024
+    target_modules: [    
+        "self_attn.q_proj",
+        "self_attn.k_proj",
+        "self_attn.v_proj",
+        "self_attn.o_proj",
+        "mlp.up_proj",
+        "mlp.gate_proj",
+        "mlp.down_proj",
+    ]
+
+data:
+  train:
+    data_fetch:
+      data_paths: [
+        {
+          "anno_path": "/mnt/data/TableImageTextPair/annotations/data_utf8.jsonl",
+          "image_folder": "/mnt/data/TableImageTextPair"
+        }
+      ]
+
+    data_preprocess:
+      frames_key: frames
+      label_key: conversations
+      tokenizer: Qwen/Qwen3-8B
+      max_seq_len: 2048
+      max_prompt_len: 2048
+      vqa_processor_params:
+        system_start: "<|im_start|>system\n"
+        system_end: "<|im_end|>"
+        system_message: "You are a helpful assistant."
+        roles: ["\n<|im_start|>user\n", "<|im_end|>\n<|im_start|>assistant\n"]
+      num_segments: 1
+      frames_ops:
+        PILExpand2Square: {}
+        HFImageTransform:
+          path: /home/ye/VoRAParse/output/jina-clip-encoder
