@@ -191,27 +191,86 @@ class VoRATrainer(Trainer):
         dataloader = DataLoader(train_dataset, **dataloader_params)
         logger.info(f"[Rank {self.accelerator.process_index}] Preparing DataLoader with Accelerator.")
         return self.accelerator.prepare(dataloader)
+import os
+import tempfile # For temporary directory
+from google.cloud import storage # For GCS upload
+# Assuming VoRATrainer and logger are defined as in your context
+# from .trainer import VoRATrainer, logger # Adjust import based on your file structure
 
-# --- Model Saving Utility ---
 def safe_save_model_for_hf_trainer(trainer: VoRATrainer, output_dir: str):
-    # No changes needed here, relies on trainer.args.should_save which is rank-aware
-    if trainer.is_deepspeed_enabled: # Use new property name
-        # For DeepSpeed on TPUs (less common), ensure proper synchronization if needed.
-        # xm.rendezvous("deepspeed_save_model") might be useful before/after if not handled by DS + Accelerate
-        if trainer.args.should_save:
-            logger.info(f"[Rank {trainer.accelerator.process_index}] DeepSpeed main process saving model to {output_dir}")
-            trainer.save_model(output_dir) # save_model should handle cpu offload logic for DeepSpeed
+    # Check if saving should occur (typically only on the main process)
+    if not trainer.args.should_save:
+        logger.info(f"[Rank {trainer.accelerator.process_index}] Non-main process. Skipping model saving.")
         return
 
-    if trainer.args.should_save:
-        logger.info(f"[Rank {trainer.accelerator.process_index}] Main process saving model to {output_dir}")
-        state_dict = trainer.model.state_dict()
-        cpu_state_dict = {key: value.cpu() for key, value in state_dict.items()}
-        del state_dict
-        trainer._save(output_dir, state_dict=cpu_state_dict)
-    else:
-        logger.info(f"[Rank {trainer.accelerator.process_index}] Non-main process. Skipping model saving.")
+    logger.info(f"[Rank {trainer.accelerator.process_index}] Main process attempting to save model to: {output_dir}")
 
+    if trainer.is_deepspeed_enabled:
+        # DeepSpeed integrated with Hugging Face Accelerate/Trainer is expected
+        # to handle GCS paths correctly if gcsfs is installed.
+        logger.info(f"[Rank {trainer.accelerator.process_index}] DeepSpeed enabled. Using trainer.save_model() for GCS path: {output_dir}")
+        try:
+            trainer.save_model(output_dir)
+            logger.info(f"[Rank {trainer.accelerator.process_index}] DeepSpeed model saved successfully to {output_dir}")
+        except Exception as e:
+            logger.error(f"[Rank {trainer.accelerator.process_index}] Error saving DeepSpeed model to {output_dir}: {e}", exc_info=True)
+        return
+
+    # --- Non-DeepSpeed Path ---
+    # First, get the state_dict on CPU
+    logger.info(f"[Rank {trainer.accelerator.process_index}] Preparing state_dict on CPU for non-DeepSpeed save.")
+    state_dict = trainer.model.state_dict()
+    cpu_state_dict = {key: value.cpu() for key, value in state_dict.items()}
+    del state_dict # Free up memory
+
+    if output_dir.startswith("gs://"):
+        # Save to a temporary local directory first, then upload to GCS
+        gcs_client = None
+        try:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                logger.info(f"[Rank {trainer.accelerator.process_index}] Saving model to temporary local directory: {tmpdir}")
+                # The trainer._save method saves the state_dict (e.g., pytorch_model.bin)
+                # and also other necessary files like config.json, tokenizer files, etc.
+                trainer._save(tmpdir, state_dict=cpu_state_dict)
+                logger.info(f"[Rank {trainer.accelerator.process_index}] Temporary local save complete. Starting GCS upload to {output_dir}")
+
+                gcs_client = storage.Client()
+                # Parse GCS path: gs://bucket-name/path/to/output_dir
+                bucket_name, gcs_prefix = output_dir[5:].split("/", 1)
+                bucket = gcs_client.bucket(bucket_name)
+
+                for root, _, files in os.walk(tmpdir):
+                    for filename in files:
+                        local_filepath = os.path.join(root, filename)
+                        # Create a relative path to maintain directory structure on GCS
+                        relative_path = os.path.relpath(local_filepath, tmpdir)
+                        gcs_blob_name = os.path.join(gcs_prefix, relative_path)
+                        # Normalize GCS blob name (e.g., replace backslashes if on Windows)
+                        gcs_blob_name = gcs_blob_name.replace(os.sep, '/')
+
+
+                        blob = bucket.blob(gcs_blob_name)
+                        blob.upload_from_filename(local_filepath)
+                        logger.info(f"[Rank {trainer.accelerator.process_index}] Uploaded {filename} to gs://{bucket_name}/{gcs_blob_name}")
+                logger.info(f"[Rank {trainer.accelerator.process_index}] GCS upload to {output_dir} complete.")
+        except Exception as e:
+            logger.error(f"[Rank {trainer.accelerator.process_index}] Error during GCS save for {output_dir}: {e}", exc_info=True)
+        finally:
+            # storage.Client() doesn't have an explicit close() in the same way
+            # some other clients do; connections are typically managed by the underlying http library.
+            # If you were using a specific transport that needed closing, you'd do it here.
+            del gcs_client # Allow garbage collection
+            del cpu_state_dict # Ensure memory is freed
+    else:
+        # Local output_dir: save directly
+        logger.info(f"[Rank {trainer.accelerator.process_index}] Saving model to local directory: {output_dir}")
+        try:
+            trainer._save(output_dir, state_dict=cpu_state_dict)
+            logger.info(f"[Rank {trainer.accelerator.process_index}] Model saved successfully to local directory: {output_dir}")
+        except Exception as e:
+            logger.error(f"[Rank {trainer.accelerator.process_index}] Error saving model to local directory {output_dir}: {e}", exc_info=True)
+        finally:
+            del cpu_state_dict
 
 # --- Main Training Function (executed by each XLA process) ---
 def main_training_function(model_args_dict: dict, data_args_dict: dict, training_args_dict: dict):

@@ -26,13 +26,11 @@ class VoRADataset(Dataset):
         self._modality_group_indices = []
         
         if not hasattr(processor, 'frames_key'):
-            # Or define a default if appropriate: self.frame_key = getattr(processor, 'frames_key', 'frames')
             raise ValueError("Processor object must have a 'frames_key' attribute.")
         self.frame_key = processor.frames_key
         
-        # GCS client for reading annotation files during initialization.
-        # Media file reading will be handled by the processor.
-        self.init_gcs_client = None # For __init__ phase GCS access
+        # No GCS client stored as self.init_gcs_client anymore.
+        # It will be created locally if needed within this __init__ method.
 
         prefix_length = 0
         index = 0
@@ -46,33 +44,44 @@ class VoRADataset(Dataset):
             lines_to_process = []
 
             if anno_path.startswith("gs://"):
+                gcs_client_for_annotations = None # Local client for this specific GCS annotation file
                 try:
-                    # print(f"[INFO] Attempting to read annotation file from GCS: {anno_path}")
-                    if self.init_gcs_client is None:
-                        self.init_gcs_client = storage.Client()
+                    print(f"[INFO] Attempting to read annotation file from GCS: {anno_path}")
+                    # Create a GCS client instance *locally* for this operation.
+                    # Do NOT assign it to self.something
+                    gcs_client_for_annotations = storage.Client() 
                     
                     path_parts = anno_path[5:].split("/", 1)
-                    bucket_name, blob_name = path_parts[0], (path_parts[1] if len(path_parts) > 1 else "")
+                    bucket_name = path_parts[0]
+                    blob_name = path_parts[1] if len(path_parts) > 1 else ""
 
                     if not blob_name:
                         print(f"[ERROR] Invalid GCS path for annotation (missing object name): {anno_path}")
                         continue
 
-                    bucket = self.init_gcs_client.bucket(bucket_name)
+                    bucket = gcs_client_for_annotations.bucket(bucket_name) # Use the local client
                     blob = bucket.blob(blob_name)
                     content_bytes = blob.download_as_bytes()
                     with io.TextIOWrapper(io.BytesIO(content_bytes), encoding='utf-8') as f_mem:
                         lines_to_process = f_mem.readlines()
-                    # print(f"[INFO] Successfully read {len(lines_to_process)} lines from GCS: {anno_path}")
+                    print(f"[INFO] Successfully read {len(lines_to_process)} lines from GCS: {anno_path}")
                 except Exception as e:
                     print(f"[ERROR] Failed to read GCS annotation file {anno_path}: {e}")
                     continue
+                finally:
+                    # Clean up the client if it was created and supports explicit closing,
+                    # though for storage.Client(), it's often managed by garbage collection
+                    # or underlying connection pools. Explicit close() isn't standard for storage.Client().
+                    if gcs_client_for_annotations:
+                        # storage.Client() doesn't have an explicit close() method that needs to be called here.
+                        # The underlying transport might, but it's usually managed.
+                        pass
             else: # Local path for annotations
                 try:
-                    # print(f"[INFO] Attempting to read annotation file from local path: {anno_path}")
+                    print(f"[INFO] Attempting to read annotation file from local path: {anno_path}")
                     with open(anno_path, "r", encoding='utf-8') as f:
                         lines_to_process = f.readlines()
-                    # print(f"[INFO] Successfully read {len(lines_to_process)} lines from local path: {anno_path}")
+                    print(f"[INFO] Successfully read {len(lines_to_process)} lines from local path: {anno_path}")
                 except Exception as e:
                     print(f"[ERROR] Failed to read local annotation file {anno_path}: {e}")
                     continue
@@ -122,13 +131,14 @@ class VoRADataset(Dataset):
         # Fetches the annotation metadata. This item contains GCS URIs for media.
         item_annotation = copy.deepcopy(self.anns[idx])
         
-        # The processor.transform method is now responsible for:
+        # The processor.transform method is responsible for:
         # 1. Interpreting item_annotation["image_folder"] and item_annotation[self.frame_key] (list of filenames).
         # 2. If item_annotation["image_folder"] is a GCS URI, constructing full GCS paths.
-        # 3. Efficiently reading these files *directly from GCS* (e.g., using tf.io.gfile).
+        # 3. Efficiently reading these files *directly from GCS* (e.g., using tf.io.gfile or a GCS client
+        #    initialized *within the processor's methods called by the worker*).
         # 4. Decoding and transforming them into tensors.
         try:
-            output = self.processor.transform(item_annotation)
+            output = self.processor.transform(item_annotation) # Pass the annotation dict
             
             if output is None:
                 print(f"[WARNING] Item at index {idx} (image_folder: {item_annotation.get('image_folder', 'N/A')}) "
@@ -136,14 +146,15 @@ class VoRADataset(Dataset):
                 # Safely get next index to avoid infinite recursion on last item if it always fails
                 next_idx = (idx + 1) % len(self) if len(self) > 0 else idx 
                 if next_idx == idx and len(self) == 1 : # Avoid infinite loop for single-item dataset failing
-                    raise RuntimeError(f"Single item dataset at index {idx} continuously fails processing.")
+                    # logger.error / print is fine, but raising error stops problematic training.
+                    raise RuntimeError(f"Single item dataset at index {idx} continuously fails processing. Check data or processor.")
                 return self.__getitem__(next_idx)
             return output
         except Exception as e:
             print(f"[ERROR] Error during processor.transform for item {idx} (image_folder: {item_annotation.get('image_folder', 'N/A')}): {e}. Trying next item.")
             next_idx = (idx + 1) % len(self) if len(self) > 0 else idx
             if next_idx == idx and len(self) == 1:
-                 raise RuntimeError(f"Single item dataset at index {idx} continuously fails in transform with error: {e}")
+                 raise RuntimeError(f"Single item dataset at index {idx} continuously fails in transform with error: {e}. Check data or processor.")
             return self.__getitem__(next_idx)
 
 def get_dataset(data_paths, processor):
