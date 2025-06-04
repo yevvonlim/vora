@@ -319,11 +319,24 @@ def _mp_fn(index, raw_config_dict_from_spawn: dict): # Accepts index + one raw c
     # Ensure xm and xr are imported if used directly.
     # These are available after XLA runtime is initialized in the spawned process.
     try:
+        # These imports are safe inside the spawned function
         import torch_xla.core.xla_model as xm
-        import torch_xla.runtime as xr
-        logger.info(f"XLA Process {index} (passed index) - Global Ordinal: {xm.get_global_ordinal()} / World Size: {xr.world_size()} - Local Ordinal {xr.local_ordinal()} - Host Index {xr.host_index()} - Device {xm.xla_device()} started.")
+        import torch_xla.runtime as xr # Make sure this import is present
+
+        # 'index' passed to _mp_fn by torch_xla.launch is the global ordinal.
+        # xr.global_ordinal() would also return the same value as 'index'.
+        logger.info(
+            f"XLA Process (global_ordinal: {index}) started. " # Using 'index' as global_ordinal
+            f"World Size: {xr.world_size()}, "
+            f"Local Ordinal: {xr.local_ordinal()}, "
+            f"Host Index: {xr.host_index()}, "
+            f"Device: {str(xm.xla_device())}" # Convert device to string for logging
+        )
     except Exception as e:
-        logger.error(f"XLA Process {index} could not get full XLA details: {e}")
+        # Fallback logging if full details can't be fetched, using only the passed index
+        logger.error(f"XLA Process with passed index {index} encountered an error during initial XLA detail logging: {e}")
+        logger.info(f"XLA Process (passed index: {index}) started with limited initial XLA detail logging.")
+
 
 
     # Unpack the raw_config_dict into the three expected by main_training_function
