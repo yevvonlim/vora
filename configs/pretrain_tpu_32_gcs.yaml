@@ -84,4 +84,4 @@ data:
         PILExpand2Square: {}
         HFImageTransform:
           # GCS path for HuggingFace image transform model
-          path: gs://vora-pretraining/jina-clip/hf-image-transform
+          path: gs://vora-pretraining/jina-clip

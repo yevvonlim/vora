@@ -77,7 +77,23 @@ class AuxVision(nn.Module):
                 "use_mean_pooling": False,
             } 
             self.aux_model = EVAVisionTransformer(**cfg)
-            self.aux_model.load_state_dict(torch.load(config.aux_vision, map_location='cpu', weights_only=True), strict=False)
+            if config.aux_vision.startswith('gs://'):
+                from google.cloud import storage
+
+                path_parts = config.aux_vision.replace("gs://", "").split("/", 1)
+                bucket_name = path_parts[0]
+
+                blob_name = path_parts[1] if len(path_parts) > 1 else ""
+                storage_client = storage.Client()
+                bucket = storage_client.bucket(bucket_name)
+
+                blob = bucket.blob(blob_name)
+                with blob.open("rb") as f:
+                    state_dict = torch.load(f, map_location='cpu', weights_only=True)
+                # Load from GCS
+                self.aux_model.load_state_dict(state_dict, strict=False)
+            else:
+                self.aux_model.load_state_dict(torch.load(config.aux_vision, map_location='cpu', weights_only=True), strict=False)
             vision_hidden_size = 1024
             num_hidden_layers = 24
 

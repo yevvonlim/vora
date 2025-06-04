@@ -7,16 +7,137 @@ import torchvision.transforms as T
 from PIL import Image
 from torchvision.transforms import Compose
 from transformers import AutoImageProcessor
-
+from google.cloud import storage # For GCS
+import tempfile
+import os
+import shutil # Not using shutil.rmtree, using tempfile.TemporaryDirectory object
+import torch # Added for type hinting and 'pt' tensor return
 
 class HFImageTransform:
-    def __init__(self, path):
-        self.image_processor = AutoImageProcessor.from_pretrained(path, trust_remote_code=True)
+    def __init__(self, path: str):
+        """
+        Initializes an image transformer by loading a Hugging Face AutoImageProcessor.
+        Supports local paths, Hugging Face Hub model IDs, or GCS paths.
 
-    def __call__(self, image: Image.Image):
-        image = self.image_processor(image, return_tensors='pt')['pixel_values'][0]
-        return image
+        Args:
+            path (str): Path to the model/processor files.
+                        - Local directory path (e.g., "./my_processor")
+                        - Hugging Face Hub model ID (e.g., "google/vit-base-patch16-224-in21k")
+                        - GCS directory path (e.g., "gs://bucket-name/path/to/processor_files/")
+        """
+        self._temp_dir_obj = None  # Stores the TemporaryDirectory object if a GCS path is used
 
+        if path.startswith("gs://"):
+            print(f"Attempting to load image processor from GCS path: {path}")
+            # tempfile.TemporaryDirectory can be used as a context manager,
+            # or if the object is retained, it automatically cleans up the directory upon object destruction.
+            self._temp_dir_obj = tempfile.TemporaryDirectory()
+            local_download_path = self._temp_dir_obj.name
+            path_to_load = local_download_path
+
+            try:
+                # Parse GCS path
+                parts = path[5:].split("/", 1)
+                bucket_name = parts[0]
+                gcs_prefix = ""
+                if len(parts) > 1:
+                    gcs_prefix = parts[1]
+                
+                # Ensure gcs_prefix ends with '/' to act like a directory
+                if gcs_prefix and not gcs_prefix.endswith('/'):
+                    gcs_prefix += '/'
+
+                storage_client = storage.Client()
+                bucket = storage_client.bucket(bucket_name)
+                
+                print(f"Downloading files from GCS bucket '{bucket_name}' prefix '{gcs_prefix}'...")
+                blobs = list(bucket.list_blobs(prefix=gcs_prefix)) # Convert to list to check if any blobs were found
+
+                if not blobs:
+                    # self._temp_dir_obj.cleanup() # Clean up temporary directory
+                    raise FileNotFoundError(f"No files found at GCS path: {path} (or permission issue)")
+
+                downloaded_any_file = False
+                for blob in blobs:
+                    # Skip empty objects representing GCS "folders" themselves
+                    # (name is the same as prefix or it's an empty file ending with '/')
+                    if blob.name == gcs_prefix and blob.size == 0:
+                        continue
+                    if blob.name.endswith('/') and blob.size == 0: # Skip objects representing folders
+                        continue
+
+                    # Determine the relative path within the temporary directory
+                    # E.g.: gcs_prefix="path/to/processor/", blob.name="path/to/processor/config.json"
+                    # relative_blob_path = "config.json"
+                    relative_blob_path = blob.name[len(gcs_prefix):]
+                    
+                    # If blob.name is the same as gcs_prefix itself (i.e., gcs_prefix points to a single file),
+                    # relative_blob_path might be empty. In this case, use only the file name.
+                    if not relative_blob_path:
+                         relative_blob_path = os.path.basename(blob.name)
+
+                    local_file_path = os.path.join(local_download_path, relative_blob_path)
+
+                    # Create necessary subdirectories
+                    local_file_dir = os.path.dirname(local_file_path)
+                    if not os.path.exists(local_file_dir):
+                        os.makedirs(local_file_dir, exist_ok=True)
+
+                    print(f"  '{blob.name}' -> '{local_file_path}'")
+                    blob.download_to_filename(local_file_path)
+                    downloaded_any_file = True
+                
+                if not downloaded_any_file:
+                    # self._temp_dir_obj.cleanup()
+                    raise FileNotFoundError(f"No valid files found at GCS path: {path}. "
+                                            "Ensure the path points to a 'directory' containing processor files.")
+
+            except Exception as e:
+                # Clean up temporary directory if an error occurred (if self._temp_dir_obj was created)
+                if self._temp_dir_obj:
+                    self._temp_dir_obj.cleanup()
+                raise RuntimeError(f"Error loading processor from GCS path '{path}': {e}")
+        else:
+            print(f"Loading image processor from local or Hugging Face Hub path: {path}")
+            path_to_load = path
+
+        # `trust_remote_code=True` is from the original code and requires caution for security.
+        # It's used when loading models/processors with custom code from the Hugging Face Hub.
+        self.image_processor = AutoImageProcessor.from_pretrained(path_to_load, trust_remote_code=True)
+        print(f"ImageProcessor loaded successfully from '{path_to_load}'.")
+
+        # If loaded from GCS, self._temp_dir_obj will be automatically cleaned up
+        # when the HFImageTransform instance is garbage collected. Explicit cleanup() can also be called.
+
+    def __call__(self, image: Image.Image) -> torch.Tensor:
+        """
+        Takes a PIL image as input and returns a preprocessed PyTorch tensor.
+        """
+        # Most image processors expect RGB images.
+        if image.mode != "RGB":
+            image = image.convert("RGB")
+            
+        # The `image_processor` typically returns a dictionary,
+        # with the 'pixel_values' key containing a batch-shaped tensor.
+        # Since we are processing a single image here, we take the first (and only) item.
+        # (batch_size, num_channels, height, width) -> (num_channels, height, width)
+        processed_image = self.image_processor(images=image, return_tensors='pt')['pixel_values'][0]
+        return processed_image
+
+    def cleanup_temp_dir(self):
+        """
+        Explicitly cleans up the temporary directory created when loading from GCS.
+        Usually, it's cleaned up automatically when the object is destroyed, but can be called if needed.
+        """
+        if self._temp_dir_obj:
+            print(f"Cleaning up temporary directory: {self._temp_dir_obj.name}")
+            self._temp_dir_obj.cleanup()
+            self._temp_dir_obj = None
+
+    # Using __del__ for automatic temporary directory cleanup upon object destruction
+    # is also possible, but the tempfile.TemporaryDirectory object already provides this.
+    # def __del__(self):
+    #     self.cleanup_temp_dir()
 
 class PILToNdarray:
     def __init__(self):
