@@ -36,15 +36,12 @@ logger = logging.get_logger("trainer")
 
 # --- Helper Functions and Dataclasses ---
 def _patching_module_base(module: nn.Module, additional_state: AdditionalState):
-    # No changes to this function
     if isinstance(module, nn.Module) \
             and hasattr(module, 'supports_report_metrics') \
             and module.supports_report_metrics \
             and MultiTaskModuleMixin not in module.__class__.__bases__:
         module.__class__.__bases__ = module.__class__.__bases__ + (MultiTaskModuleMixin,)
-        # Ensuring the method from the mixin is correctly bound
-        if hasattr(MultiTaskModuleMixin, 'report_metrics'):
-             module.report_metrics = partial(MultiTaskModuleMixin.report_metrics.__func__, module, additional_state)
+        module.report_metrics = partial(module.report_metrics, additional_state)
 
 @dataclass
 class ModelArguments:
