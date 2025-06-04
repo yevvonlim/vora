@@ -302,18 +302,51 @@ def main_training_function(model_args_dict: dict, data_args_dict: dict, training
     xm.rendezvous("training_ヴォラ_complete") # Unique rendezvous name
     logger.info(f"[Rank {training_args.process_index}] Training function finished.")
 
-# --- XLA Spawn Function ---
-def _mp_fn(index, model_args_dict, data_args_dict, training_args_dict):
-    """
-    `index` is the local rank given by xmp.spawn. Not directly used if Trainer handles rank.
-    """
-    # Set default dtype for XLA environment, bfloat16 is often good for TPUs
-    # torch.set_default_dtype(torch.bfloat16)
-    torch.set_default_dtype(torch.float32) # Or as per your model's requirement
 
-    # Environment variables for distributed training are typically set by the XLA launcher/environment
-    # main_training_function will re-parse TrainingArguments which will pick these up.
-    main_training_function(model_args_dict, data_args_dict, training_args_dict)
+# --- XLA Spawn Function ---
+def _mp_fn(index, raw_config_dict_from_spawn: dict): # Accepts index + one raw config dict
+    """
+    `index` is the global ordinal of the current process.
+    `raw_config_dict_from_spawn` is the dictionary passed from the main process.
+    """
+    # Set default dtype for XLA environment
+    # Your config has 'mixed_precision: bf16'. Trainer handles this, but default_dtype can be set.
+    # If using bf16, ensure your model and inputs are compatible.
+    # torch.set_default_dtype(torch.bfloat16 if training_args_dict.get('mixed_precision') == 'bf16' else torch.float32)
+    torch.set_default_dtype(torch.float32) # Or torch.bfloat16 based on your needs
+
+    # Log the rank using xm or xr, now that we are in an XLA process.
+    # Ensure xm and xr are imported if used directly.
+    # These are available after XLA runtime is initialized in the spawned process.
+    try:
+        import torch_xla.core.xla_model as xm
+        import torch_xla.runtime as xr
+        logger.info(f"XLA Process {index} (passed index) - Global Ordinal: {xm.get_global_ordinal()} / World Size: {xr.world_size()} - Local Ordinal {xr.local_ordinal()} - Host Index {xr.host_index()} - Device {xm.xla_device()} started.")
+    except Exception as e:
+        logger.error(f"XLA Process {index} could not get full XLA details: {e}")
+
+
+    # Unpack the raw_config_dict into the three expected by main_training_function
+    model_args_config_dict = raw_config_dict_from_spawn.get("model", {})
+    data_args_config_dict = raw_config_dict_from_spawn.get("data", {})
+    training_args_flat_dict = {
+        k: v for k, v in raw_config_dict_from_spawn.items() if k not in ["model", "data"]
+    }
+
+    main_training_function(model_args_config_dict, data_args_config_dict, training_args_flat_dict)
+
+# # --- XLA Spawn Function ---
+# def _mp_fn(index, model_args_dict, data_args_dict, training_args_dict):
+#     """
+#     `index` is the local rank given by xmp.spawn. Not directly used if Trainer handles rank.
+#     """
+#     # Set default dtype for XLA environment, bfloat16 is often good for TPUs
+#     # torch.set_default_dtype(torch.bfloat16)
+#     torch.set_default_dtype(torch.float32) # Or as per your model's requirement
+
+#     # Environment variables for distributed training are typically set by the XLA launcher/environment
+#     # main_training_function will re-parse TrainingArguments which will pick these up.
+#     main_training_function(model_args_dict, data_args_dict, training_args_dict)
 
 # # --- Script Entry Point ---
 # if __name__ == "__main__":
