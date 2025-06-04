@@ -23,10 +23,6 @@ output_dir: gs://vora-pretraining/output/vora-tpu32-run
 wandb_project: VoRA-TPU32-GCS
 run_name: vora_tpu32_gcs_training
 
-# TPU-specific configurations
-tpu_cores: 32
-gradient_clipping: 1.0
-mixed_precision: bf16
 
 # Training optimizations
 max_steps: 50000
