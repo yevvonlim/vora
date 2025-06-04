@@ -532,7 +532,7 @@ class VoRAProcessor(object):
                         collate_data[aux_frame_key] = torch.empty((0,))
 
 
-        collate_data["n_frames"] = torch.tensor(frame_len_list, dtype=torch.int60) # Ensure n_frames is a tensor
+        collate_data["n_frames"] = torch.tensor(frame_len_list, dtype=torch.int64) # Ensure n_frames is a tensor
 
         return valid_batch_data, collate_data
 

@@ -63,7 +63,7 @@ data:
         {
           # GCS paths for dataset
           "anno_path": "gs://vora-pretraining/dataset/table-ai-hub/annotations/data.jsonl",
-          "image_folder": "gs://vora-pretraining/dataset/table-ai-hub/frames"
+          "image_folder": "gs://vora-pretraining/dataset/table-ai-hub/"
         }
       ]
 
