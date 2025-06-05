@@ -180,7 +180,7 @@ class VoRAProcessor(object):
                         else: # If frame is a relative path to be appended to image_folder
                             full_frame_paths.append(base_gcs_path + frame_filename.lstrip('/'))
                     loader_fn = self._load_gcs_frame
-                    logger.info(f"Loading {len(full_frame_paths)} frames from GCS.")
+                    
                 else: # Local file system
                     if not image_folder and not os.path.isabs(frames[0]):
                          # If image_folder is not provided and paths are relative, this will likely fail.

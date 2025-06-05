@@ -14,7 +14,7 @@ lr_scheduler_type: "constant_with_warmup"
 logging_steps: 1
 tf32: False
 shuffle: True
-gradient_checkpointing: true
+gradient_checkpointing: True
 dataloader_num_workers: 2
 report_to: wandb
 

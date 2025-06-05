@@ -9,6 +9,12 @@ import torch
 import torch_xla.core.xla_model as xm
 import torch_xla.distributed.xla_multiprocessing as xmp
 
+# Fix for gradient checkpointing with XLA: Register XLA in torch namespace
+# This is needed because torch.utils.checkpoint tries to access torch.xla directly
+import torch_xla
+if not hasattr(torch, 'xla'):
+    torch.xla = torch_xla
+
 from torch import nn
 from torch.utils.data import DataLoader
 import transformers
