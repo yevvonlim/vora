@@ -72,11 +72,11 @@ def custom_prepare_4d_causal_attention_mask_with_cache_position(
     sequence_length: int,
     target_length: int,
     dtype: torch.dtype,
-    device: torch.device,
     cache_position: torch.Tensor,
     batch_size: int,
     **kwargs,
 ):
+    device = cache_position.device
     if attention_mask is not None and attention_mask.dim() == 4:
         # In this case we assume that the mask comes already in inverted form and requires no inversion or slicing.
         causal_mask = attention_mask[:, :, -sequence_length:, -target_length:]
