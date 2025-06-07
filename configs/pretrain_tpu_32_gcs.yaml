@@ -12,7 +12,7 @@ weight_decay: 0.
 warmup_steps: 200
 lr_scheduler_type: "constant_with_warmup"
 logging_steps: 1
-tf32: False
+tf32: True
 shuffle: True
 gradient_checkpointing: True
 dataloader_num_workers: 2
