@@ -1,7 +1,7 @@
 tokenizers
 sentencepiece
 datasets
-torch==2.5.1
+torch~=2.5.0
 pydantic==2.11.1
 bitsandbytes
 wandb
