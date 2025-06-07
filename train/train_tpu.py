@@ -407,8 +407,13 @@ def _mp_fn(index, raw_config_dict_from_spawn: dict): # Accepts index + one raw c
     training_args_flat_dict = {
         k: v for k, v in raw_config_dict_from_spawn.items() if k not in ["model", "data"]
     }
-
-    main_training_function(model_args_config_dict, data_args_config_dict, training_args_flat_dict)
+    try:
+        main_training_function(model_args_config_dict, data_args_config_dict, training_args_flat_dict)
+    except Exception as e:
+        logger.error(f"Error in main_training_function for XLA process {index}: {e}", exc_info=True)
+        import traceback
+        traceback.print_exc()
+        raise e
 
 # # --- XLA Spawn Function ---
 # def _mp_fn(index, model_args_dict, data_args_dict, training_args_dict):
