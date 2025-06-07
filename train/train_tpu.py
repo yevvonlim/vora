@@ -21,8 +21,8 @@ import torch_xla.runtime as xr
 
 # Fix for gradient checkpointing with XLA: Register XLA in torch namespace
 # This is needed because torch.utils.checkpoint tries to access torch.xla directly
-if not hasattr(torch, 'xla'):
-    torch.xla = torch_xla
+# if not hasattr(torch, 'xla'):
+#     torch.xla = torch_xla
 
 # import torch_xla.runtime as xr # Import if you prefer xr.world_size() etc.
 

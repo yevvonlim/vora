@@ -17,7 +17,11 @@ from .vora_generation_utils import (
     VoraGenerationMixin,
     custom_prepare_4d_causal_attention_mask_with_cache_position,
 )
-
+import functools
+import inspect
+from torch.utils.checkpoint import checkpoint
+from torch_xla.utils.checkpoint import checkpoint as xla_checkpoint # for TPU support
+from transformers.utils import is_torch_xla_available
 try:
     from utils import logging
 except:
@@ -73,6 +77,51 @@ class VoRAForCausalLM(PreTrainedModel):
             if param.requires_grad:
                 logger.info(f"{name}: {param.numel()}")
         logger.info(f"Total parameters: {sum(p.numel() for p in self.parameters())}")
+
+
+    def gradient_checkpointing_enable(self, gradient_checkpointing_kwargs=None):
+        """
+        Activates gradient checkpointing for the current model.
+
+        Note that in other frameworks this feature can be referred to as "activation checkpointing" or "checkpoint
+        activations".
+
+        We pass the `__call__` method of the modules instead of `forward` because `__call__` attaches all the hooks of
+        the module. https://discuss.pytorch.org/t/any-different-between-model-input-and-model-forward-input/3690/2
+
+        Args:
+            gradient_checkpointing_kwargs (dict, *optional*):
+                Additional keyword arguments passed along to the `torch.utils.checkpoint.checkpoint` function.
+        """
+        if not self.supports_gradient_checkpointing:
+            raise ValueError(f"{self.__class__.__name__} does not support gradient checkpointing.")
+
+        if gradient_checkpointing_kwargs is None:
+            gradient_checkpointing_kwargs = {"use_reentrant": True}
+
+        checkpoint_func = xla_checkpoint if is_torch_xla_available() else checkpoint
+        gradient_checkpointing_func = functools.partial(checkpoint_func, **gradient_checkpointing_kwargs)
+
+        # For old GC format (transformers < 4.35.0) for models that live on the Hub
+        # we will fall back to the overwritten `_set_gradient_checkpointing` method
+        _is_using_old_format = "value" in inspect.signature(self._set_gradient_checkpointing).parameters
+
+        if not _is_using_old_format:
+            self._set_gradient_checkpointing(enable=True, gradient_checkpointing_func=gradient_checkpointing_func)
+        else:
+            self.apply(functools.partial(self._set_gradient_checkpointing, value=True))
+            logger.warning(
+                "You are using an old version of the checkpointing format that is deprecated (We will also silently ignore `gradient_checkpointing_kwargs` in case you passed it)."
+                "Please update to the new format on your modeling file. To use the new format, you need to completely remove the definition of the method `_set_gradient_checkpointing` in your model."
+            )
+
+        if getattr(self, "_hf_peft_config_loaded", False):
+            # When using PEFT + gradient checkpointing + Trainer we need to make sure the input has requires_grad=True
+            # we do it also on PEFT: https://github.com/huggingface/peft/blob/85013987aa82aa1af3da1236b6902556ce3e483e/src/peft/peft_model.py#L334
+            # When training with PEFT, only LoRA layers will have requires grad set to True, but the output of frozen layers need to propagate
+            # the gradients to make sure the gradient flows.
+            self.enable_input_require_grads()
+
 
     def detach_and_gather_loss(self, loss, dtype, device):
         if not dist.is_initialized():
