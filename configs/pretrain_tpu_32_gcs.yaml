@@ -1,5 +1,5 @@
 # TPU-32 Training Configuration with GCS Support
-mixed_precision: "bf16"
+bf16: True
 seed: 42
 num_train_epochs: 3
 per_device_train_batch_size: 4
