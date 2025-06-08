@@ -15,7 +15,7 @@ logging_steps: 1
 tf32: False
 shuffle: True
 gradient_checkpointing: True
-dataloader_num_workers: 4
+dataloader_num_workers: 12
 report_to: wandb
 
 # GCS Bucket paths - modify these for your setup

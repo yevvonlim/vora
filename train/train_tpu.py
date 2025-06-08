@@ -44,39 +44,45 @@ from transformers import TrainerCallback, Trainer
 from transformers.utils import is_torch_xla_available
 
 # Conditionally import PyTorch/XLA specific modules.
-
-
 class XlaOptimizerStepCallback(TrainerCallback):
     """
     A custom TrainerCallback to replace the optimizer's step method
     with the PyTorch/XLA equivalent, xm.optimizer_step.
-    This is necessary for correct distributed training on TPUs.
+
+    This version uses the on_step_begin hook to guarantee the optimizer object
+    is available and uses a flag to ensure the patch is applied only once.
     """
-    def on_train_begin(self, args, state, control, **kwargs):
+    def __init__(self):
+        super().__init__()
+        # Add a stateful flag to ensure the patch is applied only once.
+        self._patched = False
+
+    def on_step_begin(self, args, state, control, **kwargs):
         """
-        This method is called once at the very beginning of trainer.train(),
-        right after the optimizer and scheduler have been created.
-        This is the perfect time to modify the optimizer.
+        This method is called at the beginning of every step.
+        The optimizer is available in kwargs here.
         """
-        # The Trainer instance itself is passed via the kwargs dictionary.
-        # We retrieve it to access its optimizer.
-        trainer = kwargs.get("trainer")
-        if trainer is None:
-            # A safety check, though this should generally not happen.
-            print("XlaOptimizerStepCallback: Could not find a trainer object in kwargs.")
+        # Check if the patch has already been applied. If so, do nothing.
+        if self._patched:
             return
 
-        # Perform the patch only if we are actually in a PyTorch/XLA environment.
-        if is_torch_xla_available():
-            # Use xm.master_print to log only on the master process (rank 0), avoiding log spam.
-            xm.master_print("Callback invoked: Applying XLA optimizer step patch...")
+        # The optimizer object is passed via the kwargs dictionary in on_step_begin.
+        optimizer = kwargs.get("optimizer")
+        
+        # Check if the optimizer exists and if we are in an XLA environment.
+        if optimizer is not None and is_torch_xla_available():
+            # Use xm.master_print to log only on the master process (rank 0).
+            xm.master_print("Callback invoked (on_step_begin): Applying XLA optimizer step patch...")
             
             # This is the core of the solution: monkey-patching the optimizer's step method.
             # We replace the default step() with a lambda function that calls the XLA-specific optimizer step.
-            # xm.optimizer_step() is crucial because it performs an "all-reduce" operation on the gradients
-            # across all TPU cores before applying the update, ensuring the model weights stay synchronized.
-            trainer.optimizer.step = lambda: xm.optimizer_step(trainer.optimizer)
-
+            optimizer.step = lambda: xm.optimizer_step(optimizer)
+            
+            # Set the flag to True so this logic doesn't run again on subsequent steps.
+            self._patched = True
+        else:
+            # If the optimizer is None or XLA is not available, log a warning.
+            xm.master_print("Callback invoked (on_step_begin): No optimizer found or XLA not available. Skipping patch.")
 
 logger = logging.get_logger("trainer")
 # Removed global processor variable, it should be instantiated within the training function
