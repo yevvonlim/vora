@@ -27,6 +27,16 @@ try:
 except:
     from transformers.utils import logging
 
+# --- XLA / TPU Specific Imports ---
+if is_torch_xla_available():
+    import torch_xla.core.xla_model as xm
+    from torch_xla.distributed.fsdp import (XlaFullyShardedDataParallel as FSDP,
+                                            checkpoint_module)
+else:
+    # Define dummy classes if not on TPU
+    FSDP = nn.Module
+    def checkpoint_module(module): return module
+
 
 logger = logging.get_logger(__name__)
 
@@ -338,3 +348,68 @@ class VoRAForCausalLM(PreTrainedModel):
         )
 
         return outputs
+
+
+# ########################################################################
+# ### FSDP Factory Function (REFINED VERSION)
+# ### This version iterates through LLM layers to apply FSDP individually.
+# ########################################################################
+def build_fsdp_vora_model(model_config: VoRAConfig, fsdp_config):
+    """
+    Creates a VoRA model, applying FSDP and Gradient Checkpointing to each
+    transformer block individually for maximum memory efficiency.
+    """
+    if not is_torch_xla_available():
+        raise RuntimeError("This FSDP factory is designed for PyTorch/XLA on TPUs.")
+
+    device = xm.xla_device()
+
+    # --- 1. Define FSDP Wrapper Function ---
+    def fsdp_wrap(module):
+        """Applies FSDP wrapping to a module."""
+        return FSDP(
+            module,
+            reshard_after_forward=fsdp_config.reshard_after_forward,
+            flatten_parameters=fsdp_config.flatten_parameters,
+        )
+
+    # --- 2. Instantiate the base model ---
+    logger.info("Instantiating VoRA model on CPU...")
+    model = VoRAForCausalLM(model_config)
+    logger.info("VoRA model instantiated on CPU.")
+
+
+    # --- 3. Apply FSDP and Checkpointing to each transformer block (NEW) ---
+    logger.info("Applying FSDP and Gradient Checkpointing to each LLM block...")
+    
+
+    try:
+        transformer_blocks = model.llm.model.layers
+    except AttributeError:
+        transformer_blocks = model.llm.transformer.h
+        logger.warning("Using fallback layer path: model.llm.transformer.h")
+        
+    for i in range(len(transformer_blocks)):
+        block_to_wrap = transformer_blocks[i]
+
+        if fsdp_config.use_grad_ckpt:
+            block_to_wrap = checkpoint_module(block_to_wrap)
+
+        fsdp_wrapped_block = fsdp_wrap(block_to_wrap)
+
+        transformer_blocks[i] = fsdp_wrapped_block
+        
+        if xm.is_master_ordinal():
+            logger.info(f"Wrapped and sharded LLM block {i+1}/{len(transformer_blocks)}")
+
+    xm.rendezvous("llm_blocks_wrapped")
+
+    # --- 4. Wrap the entire model with the root FSDP wrapper ---
+    logger.info("Applying FSDP to the root model (outer wrapper) to shard remaining parameters.")
+    model = fsdp_wrap(model)
+
+    # --- 5. Move the fully wrapped model to the XLA device ---
+    model.to(device)
+    logger.info("FSDP-wrapped model is ready and moved to XLA device.")
+
+    return model

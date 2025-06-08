@@ -18,6 +18,7 @@ import torch_xla
 import torch_xla.core.xla_model as xm
 import torch_xla.distributed.xla_multiprocessing as xmp
 import torch_xla.runtime as xr
+import torch_xla.distributed.parallel_loader as pl
 
 # Fix for gradient checkpointing with XLA: Register XLA in torch namespace
 # This is needed because torch.utils.checkpoint tries to access torch.xla directly
@@ -194,7 +195,7 @@ class VoRATrainer(Trainer):
              # Shuffle is False if a sampler is provided, True otherwise (if args.shuffle is True)
             "shuffle": (train_sampler is None and self.args.shuffle),
         }
-        dataloader = DataLoader(train_dataset, **dataloader_params)
+        dataloader = pl.MpDeviceLoader(DataLoader(train_dataset, **dataloader_params), xm.xla_device())
         logger.info(f"[Rank {self.accelerator.process_index}] Preparing DataLoader with Accelerator.")
         return self.accelerator.prepare(dataloader)
 import os
@@ -352,6 +353,7 @@ def main_training_function(model_args_dict: dict, data_args_dict: dict, training
         eval_dataset=None, # Pass eval_dataset if you have one
         data_collator=data_collator,
     )
+    trainer.optimizer.step = lambda: xm.optimizer_step(trainer.optimizer) # Use XLA optimizer step
 
     logger.info(f"[Rank {training_args.process_index}] Starting training...")
     trainer.train(resume_from_checkpoint=training_args.resume_from_checkpoint)
@@ -361,7 +363,7 @@ def main_training_function(model_args_dict: dict, data_args_dict: dict, training
         trainer.save_state()
         safe_save_model_for_hf_trainer(trainer=trainer, output_dir=training_args.output_dir)
     
-    xm.rendezvous("training_ヴォラ_complete") # Unique rendezvous name
+    xm.rendezvous("training_complete") # Unique rendezvous name
     logger.info(f"[Rank {training_args.process_index}] Training function finished.")
 
 
