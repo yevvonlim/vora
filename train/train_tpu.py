@@ -396,7 +396,6 @@ def main_training_function(model_args_dict: dict, data_args_dict: dict, training
         data_collator=data_collator,
         callbacks=[xla_callback], # Add the XLA optimizer step callback
     )
-    trainer.optimizer.step = lambda: xm.optimizer_step(trainer.optimizer) # Use XLA optimizer step
 
     logger.info(f"[Rank {training_args.process_index}] Starting training...")
     trainer.train(resume_from_checkpoint=training_args.resume_from_checkpoint)
