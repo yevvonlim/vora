@@ -22,7 +22,7 @@ report_to: wandb
 output_dir: gs://vora-pretraining/output/vora-tpu32-run
 wandb_project: VoRA-TPU32-GCS
 run_name: vora_tpu32_gcs_training
-
+optim: "adamw_bnb_8bit"
 
 load_best_model_at_end: false
 metric_for_best_model: "loss"
