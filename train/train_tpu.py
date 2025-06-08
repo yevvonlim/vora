@@ -38,6 +38,46 @@ from utils import logging # Assuming this is transformers.utils.logging or compa
 from utils.training_utils import AdditionalState, MultiTaskModuleMixin
 from utils.parser_utils import get_args_dict
 
+
+# Import necessary libraries from transformers and PyTorch
+from transformers import TrainerCallback, Trainer
+from transformers.utils import is_torch_xla_available
+
+# Conditionally import PyTorch/XLA specific modules.
+
+
+class XlaOptimizerStepCallback(TrainerCallback):
+    """
+    A custom TrainerCallback to replace the optimizer's step method
+    with the PyTorch/XLA equivalent, xm.optimizer_step.
+    This is necessary for correct distributed training on TPUs.
+    """
+    def on_train_begin(self, args, state, control, **kwargs):
+        """
+        This method is called once at the very beginning of trainer.train(),
+        right after the optimizer and scheduler have been created.
+        This is the perfect time to modify the optimizer.
+        """
+        # The Trainer instance itself is passed via the kwargs dictionary.
+        # We retrieve it to access its optimizer.
+        trainer = kwargs.get("trainer")
+        if trainer is None:
+            # A safety check, though this should generally not happen.
+            print("XlaOptimizerStepCallback: Could not find a trainer object in kwargs.")
+            return
+
+        # Perform the patch only if we are actually in a PyTorch/XLA environment.
+        if is_torch_xla_available():
+            # Use xm.master_print to log only on the master process (rank 0), avoiding log spam.
+            xm.master_print("Callback invoked: Applying XLA optimizer step patch...")
+            
+            # This is the core of the solution: monkey-patching the optimizer's step method.
+            # We replace the default step() with a lambda function that calls the XLA-specific optimizer step.
+            # xm.optimizer_step() is crucial because it performs an "all-reduce" operation on the gradients
+            # across all TPU cores before applying the update, ensuring the model weights stay synchronized.
+            trainer.optimizer.step = lambda: xm.optimizer_step(trainer.optimizer)
+
+
 logger = logging.get_logger("trainer")
 # Removed global processor variable, it should be instantiated within the training function
 
@@ -346,12 +386,15 @@ def main_training_function(model_args_dict: dict, data_args_dict: dict, training
         num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
         logger.info(f"Number of trainable parameters: {num_params:,}")
 
+    xla_callback = XlaOptimizerStepCallback()
+
     trainer = VoRATrainer(
         model=model,
         args=training_args,
         train_dataset=train_dataset, # type: ignore
         eval_dataset=None, # Pass eval_dataset if you have one
         data_collator=data_collator,
+        callbacks=[xla_callback], # Add the XLA optimizer step callback
     )
     trainer.optimizer.step = lambda: xm.optimizer_step(trainer.optimizer) # Use XLA optimizer step
 
